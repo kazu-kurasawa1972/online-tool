@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>データ暗号化ツール（ローカル専用）</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .tool { max-width: 820px; }
+    .field { margin-bottom: 14px; }
+    .field label { display:block; font-size:.85rem; color:var(--muted); margin-bottom:4px; }
+    .field input, .field textarea {
+      width:100%; padding:9px 11px; border:1px solid var(--border);
+      border-radius:8px; font:inherit; background:#fff;
+    }
+    textarea#json {
+      min-height:340px; font-family:ui-monospace,"SFMono-Regular",Menlo,monospace; font-size:.82rem;
+    }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin:8px 0 20px; }
+    .btn-sm { font-size:.9rem; padding:8px 14px; border-radius:8px; border:1px solid var(--border);
+      background:#fff; color:var(--text); cursor:pointer; }
+    .btn-sm:hover { background:#f3f4f6; }
+    .btn-primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .btn-primary:hover { background:var(--primary-dark); }
+    .warn { background:#fef3c7; border:1px solid #fcd34d; color:#92400e;
+      padding:12px 14px; border-radius:10px; font-size:.9rem; margin-bottom:18px; }
+    .ok { color:#15803d; font-weight:600; }
+    .ng { color:#b91c1c; font-weight:600; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <h1>データ暗号化ツール</h1>
+      <span class="year-badge">ローカル専用</span>
+    </div>
+  </header>
+
+  <main class="container tool">
+    <div class="warn">
+      ⚠️ このページは<strong>あなたのPC上だけ</strong>で使うものです。入力したパスワードは
+      どこにも送信されず、保存もされません。<br />
+      手順: 内容を編集 → パスワードを入力 → <strong>「暗号化して data.enc をダウンロード」</strong>
+      → ダウンロードした <code>data.enc</code> をこのフォルダに置いて <code>git push</code>。<br />
+      ※ <code>http://localhost</code> 経由で開いてください（暗号機能の利用に必要です）。
+    </div>
+
+    <div class="field">
+      <label>パスワード（学生に共有するもの）</label>
+      <input id="pw" type="text" placeholder="例: spring2025" />
+    </div>
+
+    <div class="field">
+      <label>表示内容（JSON）</label>
+      <textarea id="json" spellcheck="false"></textarea>
+    </div>
+
+    <div class="toolbar">
+      <button type="button" class="btn-sm btn-primary" id="encrypt">暗号化して data.enc をダウンロード</button>
+      <button type="button" class="btn-sm" id="load-example">テンプレートを読み込む</button>
+    </div>
+
+    <details>
+      <summary class="footer-link" style="cursor:pointer;">既存の data.enc を復号して編集する</summary>
+      <p style="font-size:.88rem; color:var(--muted);">
+        現在公開中の <code>data.enc</code> を、上のパスワード欄に正しいパスワードを入れてから読み込むと、
+        内容が上のJSON欄に展開されます。編集後にまた暗号化してください。
+      </p>
+      <div class="toolbar">
+        <button type="button" class="btn-sm" id="decrypt">data.enc を復号して読み込む</button>
+      </div>
+    </details>
+
+    <p id="status"></p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function b64(bytes){ let s=""; bytes.forEach(b=>s+=String.fromCharCode(b)); return btoa(s); }
+    function ub64(str){ const bin=atob(str); const a=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return a; }
+
+    async function deriveKey(password, salt, iterations){
+      const km = await crypto.subtle.importKey("raw",
+        new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+      return crypto.subtle.deriveKey(
+        { name:"PBKDF2", salt, iterations, hash:"SHA-256" }, km,
+        { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]);
+    }
+
+    async function encryptJSON(obj, password){
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const iterations = 250000;
+      const key = await deriveKey(password, salt, iterations);
+      const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key,
+        new TextEncoder().encode(JSON.stringify(obj)));
+      return { v:1, alg:"AES-GCM", kdf:"PBKDF2-SHA256", iterations,
+        salt:b64(salt), iv:b64(iv), ct:b64(new Uint8Array(ct)) };
+    }
+
+    async function decryptPayload(payload, password){
+      const key = await deriveKey(password, ub64(payload.salt), payload.iterations||250000);
+      const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv:ub64(payload.iv) },
+        key, ub64(payload.ct));
+      return JSON.parse(new TextDecoder().decode(pt));
+    }
+
+    function setStatus(msg, cls){ const s=$("status"); s.textContent=msg; s.className=cls||""; }
+
+    if (!crypto || !crypto.subtle) {
+      setStatus("この環境では暗号機能(crypto.subtle)が使えません。http://localhost 経由で開いてください。", "ng");
+    }
+
+    $("encrypt").addEventListener("click", async () => {
+      const pw = $("pw").value;
+      if (!pw) return setStatus("パスワードを入力してください。", "ng");
+      let obj;
+      try { obj = JSON.parse($("json").value); }
+      catch(e){ return setStatus("JSONの形式が正しくありません: " + e.message, "ng"); }
+      try {
+        const payload = await encryptJSON(obj, pw);
+        const blob = new Blob([JSON.stringify(payload)], { type:"application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "data.enc";
+        a.click();
+        URL.revokeObjectURL(a.href);
+        setStatus("✓ data.enc をダウンロードしました。このフォルダに置いて git push してください。", "ok");
+      } catch(e){ setStatus("暗号化に失敗しました: " + e.message, "ng"); }
+    });
+
+    $("decrypt").addEventListener("click", async () => {
+      const pw = $("pw").value;
+      if (!pw) return setStatus("先にパスワードを入力してください。", "ng");
+      try {
+        const res = await fetch("data.enc", { cache:"no-store" });
+        if (!res.ok) return setStatus("data.enc が見つかりません (" + res.status + ")。", "ng");
+        const payload = await res.json();
+        const obj = await decryptPayload(payload, pw);
+        $("json").value = JSON.stringify(obj, null, 2);
+        setStatus("✓ 復号しました。編集後、再度暗号化してください。", "ok");
+      } catch(e){ setStatus("復号に失敗しました（パスワードが違う可能性）: " + e.name, "ng"); }
+    });
+
+    $("load-example").addEventListener("click", async () => {
+      try {
+        const res = await fetch("data.example.json", { cache:"no-store" });
+        $("json").value = JSON.stringify(await res.json(), null, 2);
+        setStatus("テンプレートを読み込みました。", "ok");
+      } catch(e){ setStatus("data.example.json を読み込めませんでした。", "ng"); }
+    });
+
+    // 初期表示
+    fetch("data.example.json").then(r=>r.json())
+      .then(d=>{ $("json").value = JSON.stringify(d, null, 2); })
+      .catch(()=>{});
+  </script>
+</body>
+</html>

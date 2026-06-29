@@ -264,3 +264,78 @@ td a {
   padding: 16px;
   border-radius: var(--radius);
 }
+
+/* パスワードゲート */
+.gate {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.gate-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 32px 28px;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+
+.gate-lock {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.gate-card h2 {
+  margin: 12px 0 6px;
+  font-size: 1.15rem;
+}
+
+.gate-desc {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 18px;
+}
+
+.gate-card input[type="password"] {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  margin-bottom: 12px;
+}
+
+.gate-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.gate-btn {
+  width: 100%;
+  background: var(--primary);
+  border: none;
+  cursor: pointer;
+}
+
+.gate-btn:hover {
+  background: var(--primary-dark);
+}
+
+.gate-msg {
+  min-height: 1.2em;
+  margin: 12px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.gate-msg.error {
+  color: #b91c1c;
+}

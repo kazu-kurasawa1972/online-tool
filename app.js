@@ -1,6 +1,8 @@
-// オンラインツール案内 — 公開ページ
-// data.json を読み込んで内容を表示します。
+// オンラインツール案内 — 公開ページ（パスワードで暗号化されたデータを読み込み）
+// data.enc を取得 → 入力されたパスワードでブラウザ内復号 → 表示。
+// パスワードはサーバーにもgitにも保存されません。
 
+/* ---------- 表示ヘルパー ---------- */
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;")
@@ -8,11 +10,53 @@ function esc(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-
 function hasText(s) {
   return s != null && String(s).trim() !== "";
 }
 
+/* ---------- 暗号ユーティリティ（Web Crypto） ---------- */
+function b64(bytes) {
+  let s = "";
+  bytes.forEach((b) => (s += String.fromCharCode(b)));
+  return btoa(s);
+}
+function ub64(str) {
+  const bin = atob(str);
+  const a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+  return a;
+}
+async function deriveKey(password, salt, iterations) {
+  const km = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+    km,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+}
+async function decryptPayload(payload, password) {
+  const key = await deriveKey(
+    password,
+    ub64(payload.salt),
+    payload.iterations || 250000
+  );
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: ub64(payload.iv) },
+    key,
+    ub64(payload.ct)
+  );
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+/* ---------- 各セクション描画 ---------- */
 function renderLine(data) {
   if (!data || data.enabled === false) return "";
   const items = (data.items || []).filter(
@@ -98,8 +142,7 @@ function renderFaculty(data) {
 function renderZoom(data) {
   if (!data || data.enabled === false) return "";
   const rows = [];
-  if (hasText(data.meetingId))
-    rows.push(rowHtml("ミーティングID", data.meetingId));
+  if (hasText(data.meetingId)) rows.push(rowHtml("ミーティングID", data.meetingId));
   if (hasText(data.passcode)) rows.push(rowHtml("パスコード", data.passcode));
   const btn = hasText(data.url)
     ? `<a class="btn" href="${esc(data.url)}" target="_blank" rel="noopener">Zoomに参加する</a>`
@@ -108,8 +151,7 @@ function renderZoom(data) {
   if (rows.length === 0 && !btn) {
     inner = `<p class="empty-note">（未設定）</p>`;
   } else {
-    inner =
-      (rows.length ? `<div class="zoom-info">${rows.join("")}</div>` : "") + btn;
+    inner = (rows.length ? `<div class="zoom-info">${rows.join("")}</div>` : "") + btn;
   }
   return card("dot-zoom", data.heading || "Zoom 共通リンク", data.description, inner);
 }
@@ -119,7 +161,6 @@ function rowHtml(label, value) {
     label
   )}</span><span class="value">${esc(value)}</span></div>`;
 }
-
 function card(dotClass, heading, desc, innerHtml) {
   const d = hasText(desc) ? `<p class="card-desc">${esc(desc)}</p>` : "";
   return `<section class="card">
@@ -147,17 +188,81 @@ function render(data) {
     html || `<p class="empty-note">表示する項目がありません。</p>`;
 }
 
-async function load() {
+/* ---------- パスワードゲート ---------- */
+const SS_KEY = "online-tool-pw"; // このタブ内のみ保持（sessionStorage）
+let encPayload = null;
+
+function showGate(message) {
+  document.getElementById("content").innerHTML = `
+    <div class="gate">
+      <div class="gate-card">
+        <div class="gate-lock">🔒</div>
+        <h2>パスワードが必要です</h2>
+        <p class="gate-desc">このページを表示するにはパスワードを入力してください。</p>
+        <form id="gate-form">
+          <input id="gate-pw" type="password" autocomplete="current-password"
+                 placeholder="パスワード" autofocus />
+          <label class="gate-remember">
+            <input type="checkbox" id="gate-remember" checked />
+            このタブで保持する
+          </label>
+          <button type="submit" class="btn gate-btn">表示する</button>
+          <p id="gate-msg" class="gate-msg">${message ? esc(message) : ""}</p>
+        </form>
+      </div>
+    </div>`;
+  document.getElementById("gate-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = document.getElementById("gate-pw").value;
+    const remember = document.getElementById("gate-remember").checked;
+    await tryDecrypt(pw, remember, true);
+  });
+}
+
+async function tryDecrypt(pw, remember, fromUser) {
+  const msg = document.getElementById("gate-msg");
+  if (msg) msg.textContent = "確認中...";
   try {
-    const res = await fetch("data.json", { cache: "no-store" });
-    if (!res.ok) throw new Error("data.json を読み込めませんでした (" + res.status + ")");
-    const data = await res.json();
+    const data = await decryptPayload(encPayload, pw);
+    if (remember) sessionStorage.setItem(SS_KEY, pw);
     render(data);
   } catch (err) {
-    document.getElementById("content").innerHTML =
-      `<div class="error-box">読み込みエラー: ${esc(err.message)}<br />` +
-      `ローカルで開く場合は、ファイルを直接開かず簡易サーバー経由で表示してください。</div>`;
+    sessionStorage.removeItem(SS_KEY);
+    if (fromUser) {
+      if (msg) {
+        msg.textContent = "パスワードが違います。";
+        msg.classList.add("error");
+      }
+    } else {
+      showGate(""); // 保存PWが無効だった場合は静かにフォーム表示
+    }
   }
 }
 
-load();
+async function init() {
+  try {
+    const res = await fetch("data.enc", { cache: "no-store" });
+    if (res.status === 404) {
+      document.getElementById("content").innerHTML =
+        `<div class="error-box">データ（data.enc）がまだ設定されていません。<br />` +
+        `<code>encrypt.html</code> で内容とパスワードを入力して <code>data.enc</code> を作成し、` +
+        `リポジトリに追加してください。</div>`;
+      return;
+    }
+    if (!res.ok) throw new Error("data.enc を読み込めませんでした (" + res.status + ")");
+    encPayload = await res.json();
+  } catch (err) {
+    document.getElementById("content").innerHTML =
+      `<div class="error-box">読み込みエラー: ${esc(err.message)}</div>`;
+    return;
+  }
+
+  const saved = sessionStorage.getItem(SS_KEY);
+  if (saved) {
+    await tryDecrypt(saved, true, false);
+  } else {
+    showGate("");
+  }
+}
+
+init();
