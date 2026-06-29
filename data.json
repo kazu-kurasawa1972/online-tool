@@ -1,0 +1,47 @@
+{
+  "title": "オンラインツール案内",
+  "year": "2025年度",
+  "lineOpenChat": {
+    "enabled": true,
+    "heading": "LINEオープンチャット",
+    "description": "担当教員は授業連絡をLINEのオープンチャットで配信します。下のQRコードから参加してください。",
+    "items": [
+      {
+        "label": "",
+        "qrImage": "",
+        "url": ""
+      }
+    ]
+  },
+  "teams": {
+    "enabled": true,
+    "heading": "Microsoft Teams",
+    "description": "下記のリンクまたはチームコードから参加してください。",
+    "courses": [
+      {
+        "name": "",
+        "url": "",
+        "code": ""
+      }
+    ]
+  },
+  "faculty": {
+    "enabled": true,
+    "heading": "教員連絡先",
+    "description": "ご質問は担当教員までメールでお問い合わせください。",
+    "members": [
+      {
+        "name": "",
+        "email": ""
+      }
+    ]
+  },
+  "zoom": {
+    "enabled": true,
+    "heading": "Zoom 共通リンク",
+    "description": "オンライン授業は下記の共通リンクから参加してください。",
+    "meetingId": "",
+    "passcode": "",
+    "url": ""
+  }
+}
