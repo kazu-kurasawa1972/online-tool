@@ -152,10 +152,19 @@
       } catch(e){ setStatus("data.example.json を読み込めませんでした。", "ng"); }
     });
 
-    // 初期表示
-    fetch("data.example.json").then(r=>r.json())
-      .then(d=>{ $("json").value = JSON.stringify(d, null, 2); })
-      .catch(()=>{});
+    // 初期表示: ローカルの作業用 data.json があれば優先、なければテンプレート
+    (async () => {
+      for (const f of ["data.json", "data.example.json"]) {
+        try {
+          const r = await fetch(f, { cache: "no-store" });
+          if (r.ok) {
+            $("json").value = JSON.stringify(await r.json(), null, 2);
+            if (f === "data.json") setStatus("ローカルの data.json を読み込みました。", "ok");
+            return;
+          }
+        } catch (e) { /* 次の候補へ */ }
+      }
+    })();
   </script>
 </body>
 </html>
