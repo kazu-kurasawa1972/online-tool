@@ -18,7 +18,7 @@
 ### セキュリティ上の注意
 - パスワードを知っている人は誰でも閲覧でき、内容を他人に共有することも可能です（共有パスワード方式）。
 - `data.enc` は誰でもダウンロードできるため、**弱いパスワードは時間をかければ破られる**可能性があります。
-  推測されにくい長めのパスワードにしてください。
+  年号や科目名だけの短いものは避け、**無関係な語を3〜4語つなげた20文字以上**にしてください。
 - 「URLを知っている人すべてを確実に締め出す」レベルが必要な場合は、別方式（Cloudflare Access 等）が必要です。
 
 ## ファイル構成
@@ -28,11 +28,12 @@
 | `index.html` | 公開ページ |
 | `styles.css` | スタイル |
 | `app.js` | `data.enc` を読み込み、パスワードで復号して表示 |
+| `crypto-util.js` | 暗号処理の共通部分（`index.html` と `encrypt.html` の両方が読み込む） |
 | `data.enc` | **暗号化済みデータ（これを公開）** ※ `encrypt.html` で作成 |
 | `encrypt.html` | **ローカル専用**。内容＋パスワードから `data.enc` を作る／復号して編集する |
 | `data.example.json` | 入力内容のテンプレート（中身は空・機密なし） |
 | `data.json` | ローカル作業用の平文（`.gitignore` 済み・コミットされません） |
-| `images/` | QRコード画像などを置く場所 |
+| `images/` | QR画像を**ファイルとして**置く場合の場所（現在は未使用／後述） |
 | `.nojekyll` | GitHub Pages 用設定 |
 
 ## 初回セットアップ（data.enc を作る）
@@ -69,13 +70,13 @@
 ```jsonc
 {
   "title": "オンラインツール案内",
-  "year": "2025年度",
+  "year": "2026年度前期",
   "lineOpenChat": {
     "enabled": true,
     "heading": "LINEオープンチャット",
     "description": "説明文",
     "items": [
-      { "label": "科目名", "qrImage": "images/line1.png", "url": "https://line.me/..." }
+      { "label": "科目名", "qrImage": "data:image/png;base64,iVBOR...", "url": "https://line.me/..." }
     ]
   },
   "teams": {
@@ -105,8 +106,38 @@
 }
 ```
 
-QRコード画像は `images/` に置き、`qrImage` に `images/ファイル名.png` のように相対パスで指定します。
-（画像自体は暗号化されないため、機密性の高い画像は注意してください）
+### QRコード画像の指定方法
+
+`qrImage` には次の2通りが指定できます。
+
+**A. データURIで埋め込む（現在の運用・推奨）**
+
+```jsonc
+"qrImage": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+```
+
+画像そのものが JSON の中に入るため、**QR画像も暗号化の対象**になります。パスワードを知らない人には
+QRを見られません。かわりに `data.enc` のサイズが大きくなります（QR 1枚あたり約100KB、現状 約440KB）。
+
+PNG をデータURIに変換するには、たとえば次のようにします。
+
+```bash
+# macOS / Linux
+echo "data:image/png;base64,$(base64 -w0 line1.png)"
+```
+```powershell
+# Windows PowerShell
+"data:image/png;base64," + [Convert]::ToBase64String([IO.File]::ReadAllBytes("line1.png"))
+```
+
+**B. `images/` にファイルとして置き、相対パスで指定する**
+
+```jsonc
+"qrImage": "images/line1.png"
+```
+
+`data.enc` は軽くなりますが、**画像ファイルは暗号化されず誰でも直接URLで取得できます**。
+QRを見られても構わない場合のみ使ってください。
 
 ## GitHub Pages での公開
 

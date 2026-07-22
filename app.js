@@ -14,47 +14,7 @@ function hasText(s) {
   return s != null && String(s).trim() !== "";
 }
 
-/* ---------- 暗号ユーティリティ（Web Crypto） ---------- */
-function b64(bytes) {
-  let s = "";
-  bytes.forEach((b) => (s += String.fromCharCode(b)));
-  return btoa(s);
-}
-function ub64(str) {
-  const bin = atob(str);
-  const a = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
-  return a;
-}
-async function deriveKey(password, salt, iterations) {
-  const km = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"]
-  );
-  return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
-    km,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["decrypt"]
-  );
-}
-async function decryptPayload(payload, password) {
-  const key = await deriveKey(
-    password,
-    ub64(payload.salt),
-    payload.iterations || 250000
-  );
-  const pt = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: ub64(payload.iv) },
-    key,
-    ub64(payload.ct)
-  );
-  return JSON.parse(new TextDecoder().decode(pt));
-}
+// 暗号処理（decryptPayload など）は crypto-util.js を参照
 
 /* ---------- 各セクション描画 ---------- */
 function renderLine(data) {

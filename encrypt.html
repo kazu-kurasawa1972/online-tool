@@ -47,7 +47,11 @@
 
     <div class="field">
       <label>パスワード（学生に共有するもの）</label>
-      <input id="pw" type="text" placeholder="例: spring2025" />
+      <input id="pw" type="text" placeholder="例: kouza-midori-7182-tsukushi" />
+      <p style="font-size:.82rem; color:var(--muted); margin:6px 0 0;">
+        <code>data.enc</code> は誰でもダウンロードできます。年号や科目名だけの短いパスワードは
+        総当たりで破られます。<strong>無関係な語を3〜4語つなげた20文字以上</strong>にしてください。
+      </p>
     </div>
 
     <div class="field">
@@ -74,38 +78,10 @@
     <p id="status"></p>
   </main>
 
+  <script src="crypto-util.js"></script>
   <script>
+    // 暗号処理（encryptJSON / decryptPayload）は crypto-util.js を参照
     const $ = (id) => document.getElementById(id);
-
-    function b64(bytes){ let s=""; bytes.forEach(b=>s+=String.fromCharCode(b)); return btoa(s); }
-    function ub64(str){ const bin=atob(str); const a=new Uint8Array(bin.length);
-      for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return a; }
-
-    async function deriveKey(password, salt, iterations){
-      const km = await crypto.subtle.importKey("raw",
-        new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
-      return crypto.subtle.deriveKey(
-        { name:"PBKDF2", salt, iterations, hash:"SHA-256" }, km,
-        { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]);
-    }
-
-    async function encryptJSON(obj, password){
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const iterations = 250000;
-      const key = await deriveKey(password, salt, iterations);
-      const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key,
-        new TextEncoder().encode(JSON.stringify(obj)));
-      return { v:1, alg:"AES-GCM", kdf:"PBKDF2-SHA256", iterations,
-        salt:b64(salt), iv:b64(iv), ct:b64(new Uint8Array(ct)) };
-    }
-
-    async function decryptPayload(payload, password){
-      const key = await deriveKey(password, ub64(payload.salt), payload.iterations||250000);
-      const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv:ub64(payload.iv) },
-        key, ub64(payload.ct));
-      return JSON.parse(new TextDecoder().decode(pt));
-    }
 
     function setStatus(msg, cls){ const s=$("status"); s.textContent=msg; s.className=cls||""; }
 
